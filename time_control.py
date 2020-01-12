@@ -14,3 +14,7 @@ def GetTimeList(year, month, day):
         from_time = from_time + timedelta(days=1)
     print(time_list)
     return time_list
+
+def GetNowTime():
+    now_time = datetime.now()
+    return now_time.strftime("%Y%m%d")
