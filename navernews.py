@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from bs4 import BeautifulSoup
 from time_control import GetTimeList, GetNowTime
+from excel import WriteInfoToCsv, ReadExcel
 import requests
 import pandas as pd
 import os
@@ -19,7 +20,7 @@ class NaverNewsCrawling:
     SEARCH_FROM_YEAR = 2020
     SEARCH_FROM_MONTH = 1
     SEARCH_FROM_DAY = 10
-
+    WAIT_SECONDS = 60
     # 259금융, 258증권, 261산업재계, 771중기벤처, 260부동산, 262글로벌경제 310생활경제, 263겨에일반
     # 264청와대, 265국회, 267국방외교,
     #cateGory = [258, 259, 260, 261, 262, 263, 264, 265, 310, 771]
@@ -31,21 +32,6 @@ class NaverNewsCrawling:
 
         #self.CrawlNaverNews()
         self.ContinueGettingNews()
-
-    #중복일 경우는 True를 리턴한다.
-    def CheckLastNews(self, news_class, idx):
-        if not news_class['category'] in self.last_news:
-            self.last_news[news_class['category']] = news_class['title']
-            return False
-
-        if self.last_news[news_class['category']] == news_class['title']:
-            return True
-
-        # 제일 처음한 뉴스를 중복체크를 위해 저장해놓는다.
-        if idx == 0:
-            self.last_news[news_class['category']] = news_class['title']
-            return False
-
 
 
     #실시간으로 업데이트 되는 뉴스를 parsing 한다.
@@ -65,12 +51,12 @@ class NaverNewsCrawling:
                             break
 
                         #엑셀에 저장하기
-                        self.WriteInfoToCsv(news_class)
+                        WriteInfoToCsv(news_class, self.classCategory)
 
                 except Exception as e:
                     print(e)
                     pass
-            time.sleep(5)
+            time.sleep(WAIT_SECONDS)
 
 
     #특정날짜부터 현재날짜까지의 뉴스를 찾는다.
@@ -89,10 +75,9 @@ class NaverNewsCrawling:
                          news_url_list = self.ParseNewsURL(url_info)
                          for news_url in news_url_list :
                             news_class = self.GetNewsContent(news_url)
-                            self.WriteInfoToCsv(news_class)
+                            WriteInfoToCsv(news_class, self.classCategory)
                     except:
                         pass
-
 
 
     #이 함수의 경우 인자로 url을 받는다
@@ -136,31 +121,27 @@ class NaverNewsCrawling:
         return news_class
 
 
-    #excel 파일로 저장
-    #dict 형식으로 받아서 처리한다.
-    #category 폴더의 날짜 이름으로 저장한다.
-    def WriteInfoToCsv(self, news_class):
+    #사전에 카테고리별로 저장해서, 제목이랑 비교한다.
+    #중복일 경우는 True를 리턴한다.
+    def CheckLastNews(self, news_class, idx):
+        if not news_class['category'] in self.last_news:
+            self.last_news[news_class['category']] = news_class['title']
+            return False
 
-        folder_name = news_class['category']
-        #폴더 있는지 체크
-        if not os.path.isdir(folder_name):
-            os.makedirs(os.path.join(folder_name))
+        if self.last_news[news_class['category']] == news_class['title']:
+            return True
 
-        # 뉴스 날짜를 20200110 형식으로 만든다.
-        dateformat = news_class['date'].replace('.', '')[:8]
-
-        #원소를 list 형식으로 바꾼다.
-        #DataFrame 때문
-        for index, (key, elem) in enumerate(news_class.items()):
-            tmp_list = list()
-            tmp_list.append(elem)
-            news_class[key] = tmp_list
-        print(news_class)
-        dataframe = pd.DataFrame(news_class)
-        
-        dataframe.to_csv(folder_name+'/'+ self.classCategory +'_' + dateformat + '.csv', header=False, index=False, mode='a',encoding='euc-kr')
+        # 제일 처음한 뉴스를 중복체크를 위해 저장해놓는다.
+        if idx == 0:
+            self.last_news[news_class['category']] = news_class['title']
+            return False
 
 
+    #가장 많이 나온 단어찾기
+
+
+
+    #해당단어와 연관된 단어들 찾기.
 
 naver =NaverNewsCrawling()
 naver.start_class()
