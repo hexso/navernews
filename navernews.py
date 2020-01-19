@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 from bs4 import BeautifulSoup
 from time_control import GetTimeList, GetNowTime
-from excel import WriteInfoToCsv, ReadExcel
+from treatfile import WriteInfoToCsv, ReadExcel, CsvToTxtWithEdit, FixWithKomoran
 import requests
 import pandas as pd
 import os
 import time
+import glob
+import re
+from gensim.models import Word2Vec
 #csv에 저장하는 함수를 따로 짜자.
 #중복체크하는 함수 따로 만들기
 
@@ -19,20 +22,27 @@ class NaverNewsCrawling:
 
     SEARCH_FROM_YEAR = 2020
     SEARCH_FROM_MONTH = 1
-    SEARCH_FROM_DAY = 10
+    SEARCH_FROM_DAY = 18
     WAIT_SECONDS = 60
+    PAGENUM = 5
+
+    RELATEDVECTORFILE = "./word2vec/related_word2vec.model"
+
+
     # 259금융, 258증권, 261산업재계, 771중기벤처, 260부동산, 262글로벌경제 310생활경제, 263겨에일반
     # 264청와대, 265국회, 267국방외교,
     #cateGory = [258, 259, 260, 261, 262, 263, 264, 265, 310, 771]
-    cateGory = [258]
+    cateGory = [258,259,260]
     #중복 체크를 위한 사전
     last_news = dict()
 
     def start_class(self):
 
         #self.CrawlNaverNews()
-        self.ContinueGettingNews()
-
+        #self.ContinueGettingNews()
+        #self.MakeKomoranFile()
+        self.MakeRelatedVector("금융/20200118_komoran.txt")
+        self.SeekRealtedWords()
 
     #실시간으로 업데이트 되는 뉴스를 parsing 한다.
     def ContinueGettingNews(self):
@@ -62,7 +72,7 @@ class NaverNewsCrawling:
     #특정날짜부터 현재날짜까지의 뉴스를 찾는다.
     def CrawlNaverNews(self):
 
-        pageNum = 50
+        pageNum = self.PAGENUM
         dateTime = GetTimeList(self.SEARCH_FROM_YEAR, self.SEARCH_FROM_MONTH, self.SEARCH_FROM_DAY)
         #sdi 2의 카테고리에 따라서 페이지를 접속한다.
         #sdi 1은 무시되는것 같다.
@@ -70,24 +80,25 @@ class NaverNewsCrawling:
             for t in dateTime:
                 for p in range(1, pageNum, 1):
                     url_info = "https://news.naver.com/main/list.nhn?mode=LS2D&mid=shm&sid2={0}&sid1=100&date={1}&page={2}".format(c,t,p)
-                    print(url_info)
                     try:
-                         news_url_list = self.ParseNewsURL(url_info)
-                         for news_url in news_url_list :
+                        news_url_list = self.ParseNewsURL(url_info)
+                        for news_url in news_url_list :
                             news_class = self.GetNewsContent(news_url)
+                            print(news_class)
                             WriteInfoToCsv(news_class, self.classCategory)
-                    except:
+                    except Exception as ex:
+                        print(ex)
                         pass
 
 
     #이 함수의 경우 인자로 url을 받는다
-    #뉴스들의 url을 parsing한다.
+    #뉴스페이지에서 뉴스의 url을 parsing한다.
     def ParseNewsURL(self, url_info):
 
         response = requests.get(url_info)
         html = response.text
         soup = BeautifulSoup(html, 'html.parser')
-        html_newslist = soup.select("#main_content > div.list_body.newsflash_body > ul.type06_headline > li > dl > dt:nth-child(1) > a")
+        html_newslist = soup.select("#main_content > div.list_body.newsflash_body > ul.type06_headline > li > dl > dt:nth-of-type(1) > a")
         self.classCategory = soup.select('h3')[1].text
         news_url_list = list()
 
@@ -95,7 +106,7 @@ class NaverNewsCrawling:
             url_info = n.get('href')
             news_url_list.append(url_info)
 
-        html_newslist = soup.select("#main_content > div.list_body.newsflash_body > ul.type06 > li > dl > dt:nth-child(1) > a")
+        html_newslist = soup.select("#main_content > div.list_body.newsflash_body > ul.type06 > li > dl > dt:nth-of-type(1) > a")
         for n in html_newslist:
             url_info = n.get('href')
             news_url_list.append(url_info)
@@ -121,7 +132,8 @@ class NaverNewsCrawling:
         return news_class
 
 
-    #사전에 카테고리별로 저장해서, 제목이랑 비교한다.
+    #사전에 카테고리별로 찾은 뉴스의 제목중 제일 최근것을 저장한다.
+    #저장한 값과, 인자값을 비교해서 같은지를 비교한다.
     #중복일 경우는 True를 리턴한다.
     def CheckLastNews(self, news_class, idx):
         if not news_class['category'] in self.last_news:
@@ -138,10 +150,62 @@ class NaverNewsCrawling:
 
 
     #가장 많이 나온 단어찾기
+    #리스트로 출력
+    def MakeRelatedVector(self, refresh=0):
+
+        if not refresh == 0 :
+            files = list()
+            files.append(refresh)
+        else :
+            files = glob.glob("*/*_komoran.txt",recursive=True)
+
+        data_array = list()
+        print(files)
+        #글자를 정리해서 txt파일로 먼저 만든다.
+        #형태소 분석기를 통해 txt파일을 만든다.
+        for file in files:
+            f = open(file, 'r', encoding='euc-kr')
+            data_list = f.readlines()
+
+            for data in data_list : 
+                data = data.replace('\n', '')
+                data = data.split(',')
+                data_array.append(data)
+        
+        if not refresh == 0:
+            new_model = Word2Vec.load(self.RELATEDVECTORFILE)
+            new_model.build_vocab(data_array, update = True)
+            new_model.train(data_array, epochs=new_model.iter, total_examples=new_model.corpus_count)
+            new_model.save(self.RELATEDVECTORFILE)
+        else :
+            model = Word2Vec(data_array, size=100, window=10, min_count=50, iter=50,sg=1)
+            model.save(self.RELATEDVECTORFILE)
 
 
+    #csv파일들을 정리해서 txt파일과 _komoran txt파일로만든다.
+    def MakeKomoranFile(self) :
 
-    #해당단어와 연관된 단어들 찾기.
+        files = glob.glob("*/*.csv", recursive=True)
+
+        data_array = list()
+        print(files)
+        #글자를 정리해서 txt파일로 먼저 만든다.
+        #형태소 분석기를 통해 txt파일을 만든다.
+        for file in files:
+            txt_name =CsvToTxtWithEdit(file)
+            file_name = FixWithKomoran(txt_name)
+
+
+    #word2vec을 이용해서 유사단어 찾기
+    def SeekRealtedWords(self, num = 10) : 
+        a = input("what word do you want?  ")
+        model = Word2Vec.load(self.RELATEDVECTORFILE)
+        try :
+            result = model.wv.most_similar(a)
+            print(result)
+        except Exception as e:
+            print(e)
+
 
 naver =NaverNewsCrawling()
 naver.start_class()
