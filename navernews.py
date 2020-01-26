@@ -38,10 +38,10 @@ class NaverNewsCrawling:
 
     def start_class(self):
 
-        self.CrawlNaverNews()
+        #self.CrawlNaverNews()
         #self.ContinueGettingNews()
-        #self.MakeKomoranFile()
-        #self.MakeRelatedVector("금융/20200118_komoran.txt")
+        self.MakeKomoranFile()
+        #self.MakeRelatedVector()
         #self.SeekRealtedWords()
 
     #실시간으로 업데이트 되는 뉴스를 parsing 한다.
@@ -194,14 +194,12 @@ class NaverNewsCrawling:
     def MakeKomoranFile(self) :
 
         files = glob.glob("*/*.csv", recursive=True)
-
         data_array = list()
         print(files)
         #글자를 정리해서 txt파일로 먼저 만든다.
         #형태소 분석기를 통해 txt파일을 만든다.
-        for file in files:
-            txt_name =CsvToTxtWithEdit(file)
-            file_name = FixWithKomoran(txt_name)
+        txt_list = CsvToTxtWithEdit(files)
+        file_name = FixWithKomoran()
 
 
     #word2vec을 이용해서 유사단어 찾기
@@ -257,8 +255,7 @@ class NaverNewsCrawling:
     def FindRelatedStock(self, keyword) :
         files = glob.glob("*/????????.txt", recursive=True)
         date_file_list = self.FindDateRelatedWord(keyword, files)
-        stock_file_list = glob.glob(self.STOCKFOLDER+"/????????_komoran.txt", recursive=True)
-        keyword_list = self.FindFrequentWords(stock_file_list, 10)
+        keyword_list = self.FindFrequentWords(date_file_list, 10)
         return keyword_list
 
 naver =NaverNewsCrawling()

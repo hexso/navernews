@@ -2,10 +2,10 @@ import pandas as pd
 import re
 import os
 from konlpy.tag import Komoran
-
+import glob
 #엑셀의 경로, 해당 열을 받아서 리스트를 반환해준다.
 def ReadExcel(file_path, col = 4) :
-    csv = pd.read_csv(file_path, encoding='euc-kr')
+    csv = pd.read_csv(file_path, encoding='euc-kr', header=None)
     content = csv.iloc[:,col:col+1]
     content = content.values.tolist()
     real_content = list()
@@ -40,20 +40,26 @@ def WriteInfoToCsv(news_class, classCategory) :
     dataframe.to_csv(folder_name+'/' + dateformat + '.csv', header=False, index=False, mode='a',encoding='euc-kr')
 
 #해당 csv파일을 불필요한 문자들을 제거하고 txt파일로 만든다.
-def CsvToTxtWithEdit(file):
-    content_list = ReadExcel(file,4)
-    clear_sentence_list = list()
+def CsvToTxtWithEdit(files = glob.glob("*/*.csv", recursive=True), overwrite=False):
 
-    #기사내용중 불필요한 단어들 제거
-    for content in content_list :
-        clear_sentence_list.append(RemoveWord(content))
+    file_list = list()
+    for file in files :
+        if overwrite == False and os.path.isfile(file[:-4]+'.txt') :
+            continue
+        content_list = ReadExcel(file,4)
+        clear_sentence_list = list()
 
-    #기사내용을 txt파일로 쓴다.
-    f = open(file[:-3] + 'txt', 'w')
-    for each_line in clear_sentence_list :
-        f.write(each_line + '\n') 
-    f.close()
-    return file[:-3] + 'txt'
+        #기사내용중 불필요한 단어들 제거
+        for content in content_list :
+            clear_sentence_list.append(RemoveWord(content))
+
+        #기사내용을 txt파일로 쓴다.
+        f = open(file[:-4] + '.txt', 'w')
+        for each_line in clear_sentence_list :
+            f.write(each_line + '\n')
+        f.close()
+        file_list.append(file[:-4] + '.txt')
+    return file_list
 
 
 #불필요한 단어들 제거하기
@@ -75,22 +81,27 @@ def RemoveWord(sentence):
 
 #코모란을 이용하여 파일을 읽어서 ,으로 나누어서 다시 txt파일로 저장한다
 #이때 라인단위로 분류하여 읽고 쓴다.
-def FixWithKomoran(file):
-    
-    target = open(file, 'r')
-    to_save = open(file[:-4] + '_komoran.txt', 'w')
-    ko = Komoran()
-    target_list = target.readlines()
-
-    for sentence in target_list :
-        edit_sentence = ko.nouns(sentence)
-        for  i in edit_sentence :
-            if len(i) == 1:
-                edit_sentence.remove(i)
-        to_save.write(','.join(edit_sentence) + '\n')
-
-    target.close()
-    to_save.close()
+def FixWithKomoran(files = glob.glob("*/????????.txt", recursive=True), overwrite=False):
+    USERDIRECTORY = "./user_dictionary"
+    ko = Komoran(userdic=USERDIRECTORY)
+    for file in files :
+        if overwrite == False and os.path.isfile(file[:-4]+'_komoran.txt') :
+            continue
+        target = open(file, 'r')
+        to_save = open(file[:-4] + '_komoran.txt', 'w')
+        target_list = target.readlines()
+        print(file)
+        try:
+            for sentence in target_list :
+                edit_sentence = ko.nouns(sentence)
+                for  i in edit_sentence :
+                    if len(i) == 1:
+                        edit_sentence.remove(i)
+                to_save.write(','.join(edit_sentence) + '\n')
+        except Exception as e:
+            print(sentence)
+        target.close()
+        to_save.close()
     return file[:-4] + '_komoran.txt'
 
 
